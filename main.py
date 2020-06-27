@@ -21,11 +21,18 @@ from gpiozero import *
 from firebase import firebase
 from datetime import datetime
 import threading
+from pygame import mixer
+
 
 firebase = firebase.FirebaseApplication("https://iot-db-bde4c.firebaseio.com/", None)
 DHT_SENSOR = Adafruit_DHT.DHT22
-DHT_PIN = 14
+DHT_PIN = 21
 relay_lamp = OutputDevice(15)
+musicList = [ 'OOR Full Album.mp3', 'Sora The Troll - FULL ALBUM.mp3'  ]
+mixer.init()
+mixer.music.load(musicList[0])
+mixer.music.set_volume(0.7)
+musicFlag = 0
 
 def postData(data):
     result = firebase.post("/iot-db-bde4c/log", data)
@@ -42,6 +49,10 @@ def delData():
 
 def postLight(data):
     result = firebase.put("/iot-db-bde4c/light","value",data)
+    print(result)
+
+def postMusic(data):
+    result = firebase.put("iot-db-bde4c/music","value",data)
     print(result)
 
 def speak(audioString):
@@ -63,9 +74,9 @@ def recordAudio():
             data = r.recognize_google(audio)
             print("You Said: " + data)
         except sr.UnknownValueError:
-            print("Alice Speech Recognition could not understand audio")
+            print(" System Speech Recognition could not understand audio")
         except sr.RequestError as e:
-            print("Could not request result from Alexa Speech Recognition Service; {0}".format(e))
+            print(" Could not request result from System Speech Recognition Service; {0}".format(e))
 
         return data
 
@@ -155,6 +166,24 @@ def alice(data):
         postData(recordData)
         sys.exit()
 
+    if "stop the music" in data:
+        speak("ok stop the music")
+        recordData = {
+                "Command": data,
+                "Datetime": datetime.now()
+                
+                }
+        postData(recordData)
+        postMusic(False)
+    
+    if "play music" in data:
+        speak("ok play the music")
+        recordData = {
+                "Command": data,
+                "Datetime": datetime.now()
+                }
+        postData(recordData)
+        postMusic(True)
 
 def postTemp(data):
     result = firebase.put("/iot-db-bde4c/DHT22","Temperature",data)
@@ -166,8 +195,19 @@ time.sleep(2)
 speak("Hi Master, what can I do for you?")
     
 while True:
+    
     result = firebase.get("/iot-db-bde4c/light","")
-    print(result["value"])
+    print("Lamp Status: " + str(result["value"]))
+
+    musicState = firebase.get("/iot-db-bde4c/music","")
+    print("Music Status: " + str(musicState["value"]))
+
+    if musicState["value"] == True and musicFlag == 0:
+        mixer.music.play()
+        musicFlag = 1
+    elif musicState["value"] == False and musicFlag == 1:
+        mixer.music.pause()
+        musicFlag = 0
 
     if result["value"] == True:
         relay_lamp.off()
